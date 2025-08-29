@@ -55,44 +55,98 @@ class NanoporeRead(object):
         self.albacore_barcode_call = None
 
     def get_seq_with_start_end_adapters_trimmed(self):
-        if not self.start_trim_amount and not self.end_trim_amount:
-            return self.seq
-        start_pos = self.start_trim_amount
-        end_pos = len(self.seq) - self.end_trim_amount
-        trimmed_seq = self.seq[start_pos:end_pos]
-        return trimmed_seq
+        return self.seq
+        # if not self.start_trim_amount and not self.end_trim_amount:
+        #     return self.seq
+        # start_pos = self.start_trim_amount
+        # end_pos = len(self.seq) - self.end_trim_amount
+        # trimmed_seq = self.seq[start_pos:end_pos]
+        # return trimmed_seq
+        
 
     def seq_length_with_start_end_adapters_trimmed(self):
         return len(self.get_seq_with_start_end_adapters_trimmed())
 
     def get_quals_with_start_end_adapters_trimmed(self):
-        if not self.start_trim_amount and not self.end_trim_amount:
-            return self.quals
-        start_pos = self.start_trim_amount
-        end_pos = len(self.quals) - self.end_trim_amount
-        trimmed_quals = self.quals[start_pos:end_pos]
-        return trimmed_quals
+        return self.quals
+        # if not self.start_trim_amount and not self.end_trim_amount:
+        #     return self.quals
+        # start_pos = self.start_trim_amount
+        # end_pos = len(self.quals) - self.end_trim_amount
+        # trimmed_quals = self.quals[start_pos:end_pos]
+        # return trimmed_quals
 
-    def get_split_read_parts(self, min_split_read_size):
-        """
-        Returns the read split into parts as determined by the middle_trim_positions set.
-        """
+    # def get_split_read_parts(self, min_split_read_size):
+    #     """
+    #     Returns the read split into parts as determined by the middle_trim_positions set.
+    #     """
+    #     trimmed_seq = self.get_seq_with_start_end_adapters_trimmed()
+    #     trimmed_quals = self.get_quals_with_start_end_adapters_trimmed()
+    #     print(trimmed_seq, self.middle_trim_positions)
+    #     split_read_parts = []
+    #     part_seq, part_quals = [], []
+    #     for i in range(len(trimmed_seq)):
+    #         if i in self.middle_trim_positions:
+    #             if part_seq:
+    #                 split_read_parts.append((''.join(part_seq), ''.join(part_quals)))
+    #                 part_seq, part_quals = [], []
+    #         else:
+    #             part_seq.append(trimmed_seq[i])
+    #             part_quals.append(trimmed_quals[i])
+    #     if part_seq:
+    #         split_read_parts.append((''.join(part_seq), ''.join(part_quals)))
+    #     print(split_read_parts)
+    #     split_read_parts = [x for x in split_read_parts if len(x[0]) >= min_split_read_size]
+    #     return split_read_parts
+
+    def get_split_read_parts(self, min_split_read_size):        
         trimmed_seq = self.get_seq_with_start_end_adapters_trimmed()
         trimmed_quals = self.get_quals_with_start_end_adapters_trimmed()
-        split_read_parts = []
-        part_seq, part_quals = [], []
-        for i in range(len(trimmed_seq)):
-            if i in self.middle_trim_positions:
-                if part_seq:
-                    split_read_parts.append((''.join(part_seq), ''.join(part_quals)))
-                    part_seq, part_quals = [], []
+        # print(trimmed_seq,trimmed_quals)
+        # print(self.middle_trim_positions)
+
+        # 构造连续区间列表
+        positions = sorted(self.middle_trim_positions)
+        if not positions:
+            # 没有adapter直接返回整个序列
+            if len(trimmed_seq) >= min_split_read_size:
+                return [(trimmed_seq, trimmed_quals)]
             else:
-                part_seq.append(trimmed_seq[i])
-                part_quals.append(trimmed_quals[i])
-        if part_seq:
-            split_read_parts.append((''.join(part_seq), ''.join(part_quals)))
+                return []
+
+        intervals = []
+        start = positions[0]
+        end = positions[0]
+        for pos in positions[1:]:
+            if pos == end + 1:
+                end = pos  # 继续延伸区间
+            else:
+                intervals.append((start, end))
+                start = pos
+                end = pos
+        intervals.append((start, end))  # 加入最后一个区间
+        # print(len(trimmed_seq),intervals)
+
+        split_read_parts = []
+        for i in range(len(intervals)):
+            part_end = intervals[i][1]
+            if i > 0 :
+                part_start = intervals[i-1][0]
+            else:
+                part_start = 0
+            part_seq = trimmed_seq[part_start:part_end]
+            part_quals = trimmed_quals[part_start:part_end]
+            split_read_parts.append((part_seq,part_quals))
+            #print(part_start,part_end,part_seq)
+        part_start=intervals[-1][0]
+        part_seq = trimmed_seq[part_start:]
+        part_quals = trimmed_quals[part_start:]
+        split_read_parts.append((part_seq,part_quals))
+        # print(len(split_read_parts),split_read_parts)
+
         split_read_parts = [x for x in split_read_parts if len(x[0]) >= min_split_read_size]
         return split_read_parts
+
 
     def get_fasta(self, min_split_read_size, discard_middle, untrimmed=False):
         if not self.middle_trim_positions:
@@ -169,21 +223,22 @@ class NanoporeRead(object):
         Aligns one or more adapter sequences and possibly adjusts the read's start trim amount based
         on the result.
         """
-        read_seq_start = self.seq[:end_size]
-        for adapter in adapters:
-            if not adapter.start_sequence:
-                continue
-            full_score, partial_score, read_start, read_end = \
-                align_adapter(read_seq_start, adapter.start_sequence[1], scoring_scheme_vals)
-            if partial_score > end_threshold and read_end != end_size and \
-                    read_end - read_start >= min_trim_size:
-                trim_amount = read_end + extra_trim_size
-                self.start_trim_amount = max(self.start_trim_amount, trim_amount)
-                self.start_adapter_alignments.append((adapter, full_score, partial_score,
-                                                      read_start, read_end))
-            if check_barcodes and adapter.is_barcode() and \
-                    adapter.barcode_direction() == forward_or_reverse:
-                self.start_barcode_scores[adapter.get_barcode_name()] = full_score
+        return
+        # read_seq_start = self.seq[:end_size]
+        # for adapter in adapters:
+        #     if not adapter.start_sequence:
+        #         continue
+        #     full_score, partial_score, read_start, read_end = \
+        #         align_adapter(read_seq_start, adapter.start_sequence[1], scoring_scheme_vals)
+        #     if partial_score > end_threshold and read_end != end_size and \
+        #             read_end - read_start >= min_trim_size:
+        #         trim_amount = read_end + extra_trim_size
+        #         self.start_trim_amount = max(self.start_trim_amount, trim_amount)
+        #         self.start_adapter_alignments.append((adapter, full_score, partial_score,
+        #                                               read_start, read_end))
+        #     if check_barcodes and adapter.is_barcode() and \
+        #             adapter.barcode_direction() == forward_or_reverse:
+        #         self.start_barcode_scores[adapter.get_barcode_name()] = full_score
 
     def find_end_trim(self, adapters, end_size, extra_trim_size, end_threshold,
                       scoring_scheme_vals, min_trim_size, check_barcodes, forward_or_reverse):
@@ -191,21 +246,22 @@ class NanoporeRead(object):
         Aligns one or more adapter sequences and possibly adjusts the read's end trim amount based
         on the result.
         """
-        read_seq_end = self.seq[-end_size:]
-        for adapter in adapters:
-            if not adapter.end_sequence:
-                continue
-            full_score, partial_score, read_start, read_end = \
-                align_adapter(read_seq_end, adapter.end_sequence[1], scoring_scheme_vals)
-            if partial_score > end_threshold and read_start != 0 and \
-                    read_end - read_start >= min_trim_size:
-                trim_amount = (end_size - read_start) + extra_trim_size
-                self.end_trim_amount = max(self.end_trim_amount, trim_amount)
-                self.end_adapter_alignments.append((adapter, full_score, partial_score,
-                                                    read_start, read_end))
-            if check_barcodes and adapter.is_barcode() and \
-                    adapter.barcode_direction() == forward_or_reverse:
-                self.end_barcode_scores[adapter.get_barcode_name()] = full_score
+        # return
+        # read_seq_end = self.seq[-end_size:]
+        # for adapter in adapters:
+        #     if not adapter.end_sequence:
+        #         continue
+        #     full_score, partial_score, read_start, read_end = \
+        #         align_adapter(read_seq_end, adapter.end_sequence[1], scoring_scheme_vals)
+        #     if partial_score > end_threshold and read_start != 0 and \
+        #             read_end - read_start >= min_trim_size:
+        #         trim_amount = (end_size - read_start) + extra_trim_size
+        #         self.end_trim_amount = max(self.end_trim_amount, trim_amount)
+        #         self.end_adapter_alignments.append((adapter, full_score, partial_score,
+        #                                             read_start, read_end))
+        #     if check_barcodes and adapter.is_barcode() and \
+        #             adapter.barcode_direction() == forward_or_reverse:
+        #         self.end_barcode_scores[adapter.get_barcode_name()] = full_score
 
     def find_middle_adapters(self, adapters, middle_threshold, extra_middle_trim_good_side,
                              extra_middle_trim_bad_side, scoring_scheme_vals,
