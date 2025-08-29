@@ -1,6 +1,8 @@
 
 适配单细胞数据拆分barcode和umi的需求：修改了 porechop.py 和 nanopore_read.py 文件。保留了识别的接头序列部分，并且不针对起始和末尾及进行裁切。
 
+
+以下未改变
 ---
 
 
