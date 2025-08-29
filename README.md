@@ -1,3 +1,9 @@
+
+适配单细胞数据拆分barcode和umi的需求：修改了 porechop.py 和 nanopore_read.py 文件。保留了识别的接头序列部分，并且不针对起始和末尾及进行裁切。
+
+---
+
+
 <p align="center"><img src="misc/porechop_logo_knife.png" alt="Porechop" width="600"></p>
 
 Porechop is a tool for finding and removing adapters from [Oxford Nanopore](https://nanoporetech.com/) reads. Adapters on the ends of reads are trimmed off, and when a read has an adapter in its middle, it is treated as chimeric and chopped into separate reads. Porechop performs thorough alignments to effectively find adapters, even at low sequence identity.
