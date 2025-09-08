@@ -1,0 +1,107 @@
+"""
+This module contains the adapters used in CYCLONE-SEQ library.
+"""
+
+
+class Adapter(object):
+
+    def __init__(self, name, start_sequence=None, end_sequence=None, both_ends_sequence=None):
+        self.name = name
+        self.start_sequence = start_sequence if start_sequence else []
+        self.end_sequence = end_sequence if end_sequence else []
+        if both_ends_sequence:
+            self.start_sequence = both_ends_sequence
+            self.end_sequence = both_ends_sequence
+        self.best_start_score, self.best_end_score = 0.0, 0.0
+
+    def best_start_or_end_score(self):
+        return max(self.best_start_score, self.best_end_score)
+
+    def is_barcode(self):
+        return self.name.startswith('Barcode ')
+
+    def barcode_direction(self):
+        if '_rev' in self.start_sequence[0]:
+            return 'reverse'
+        else:
+            return 'forward'
+
+    def get_barcode_name(self):
+        """
+        Gets the barcode name for the output files. We want a concise name, so it looks at all
+        options and chooses the shortest.
+        """
+        possible_names = [self.name]
+        if self.start_sequence:
+            possible_names.append(self.start_sequence[0])
+        if self.end_sequence:
+            possible_names.append(self.end_sequence[0])
+        barcode_name = sorted(possible_names, key=lambda x: len(x))[0]
+        return barcode_name.replace(' ', '_')
+
+
+# INSTRUCTIONS FOR ADDING CUSTOM ADAPTERS
+# ---------------------------------------
+# If you need Porechop to remove adapters that aren't included, you can add your own my modifying
+# the ADAPTERS list below.
+#
+# Here is the format for a normal adapter:
+#     Adapter('Adapter_set_name',
+#             start_sequence=('Start_adapter_name', 'AAAACCCCGGGGTTTTAAAACCCCGGGGTTTT'),
+#             end_sequence=('End_adapter_name', 'AACCGGTTAACCGGTTAACCGGTTAACCGGTT'))
+#
+# You can exclude start_sequence and end_sequence as appropriate.
+#
+# If you have custom Barcodes, make sure that the adapter set name starts with 'Barcode '. Also,
+# remove the existing barcode sequences from this file to avoid conflicts:
+#     Adapter('Barcode 1',
+#             start_sequence=('Barcode_1_start', 'AAAAAAAACCCCCCCCGGGGGGGGTTTTTTTT'),
+#             end_sequence=('Barcode_1_end', 'AAAAAAAACCCCCCCCGGGGGGGGTTTTTTTT')),
+#     Adapter('Barcode 2',
+#             start_sequence=('Barcode_2_start', 'TTTTTTTTGGGGGGGGCCCCCCCCAAAAAAAA'),
+#             end_sequence=('Barcode_2_end', 'TTTTTTTTGGGGGGGGCCCCCCCCAAAAAAAA'))
+
+
+ADAPTERS = [Adapter('BGI-ADPAT_fw_5',
+                    start_sequence=('BGI-ADPAT_fw_5', 'CGACATGGCTACGATCCGACTTTCTGCG')),
+            Adapter('BGI-ADPAT_fw_3',
+                    start_sequence=('BGI-ADPAT_fw_3', 'CTCTGCGTTGATACCACTGCT')),
+            Adapter('BGI-ADPAT_re_5',
+                    start_sequence=('BGI-ADPAT_re_5', 'AGCAGTGGTATCAACGCAGAG')),
+            Adapter('BGI-ADPAT_re_3',
+                    start_sequence=('BGI-ADPAT_re_3', 'CGCAGAAAGTCGGATCGTAGCCATGTCG'))]
+
+
+def make_full_native_barcode_adapter(barcode_num):
+    barcode = [x for x in ADAPTERS if x.name == 'Barcode ' + str(barcode_num) + ' (reverse)'][0]
+    start_barcode_seq = barcode.start_sequence[1]
+    end_barcode_seq = barcode.end_sequence[1]
+
+    start_full_seq = 'AATGTACTTCGTTCAGTTACGTATTGCTAAGGTTAA' + start_barcode_seq + 'CAGCACCT'
+    end_full_seq = 'AGGTGCTG' + end_barcode_seq + 'TTAACCTTAGCAATACGTAACTGAACGAAGT'
+
+    return Adapter('Native barcoding ' + str(barcode_num) + ' (full sequence)',
+                   start_sequence=('NB' + '%02d' % barcode_num + '_start', start_full_seq),
+                   end_sequence=('NB' + '%02d' % barcode_num + '_end', end_full_seq))
+
+
+def make_old_full_rapid_barcode_adapter(barcode_num):  # applies to SQK-RBK001
+    barcode = [x for x in ADAPTERS if x.name == 'Barcode ' + str(barcode_num) + ' (forward)'][0]
+    start_barcode_seq = barcode.start_sequence[1]
+
+    start_full_seq = 'AATGTACTTCGTTCAGTTACG' + 'TATTGCT' + start_barcode_seq + \
+                     'GTTTTCGCATTTATCGTGAAACGCTTTCGCGTTTTTCGTGCGCCGCTTCA'
+
+    return Adapter('Rapid barcoding ' + str(barcode_num) + ' (full sequence, old)',
+                   start_sequence=('RB' + '%02d' % barcode_num + '_full', start_full_seq))
+
+
+def make_new_full_rapid_barcode_adapter(barcode_num):  # applies to SQK-RBK004
+    barcode = [x for x in ADAPTERS if x.name == 'Barcode ' + str(barcode_num) + ' (forward)'][0]
+    start_barcode_seq = barcode.start_sequence[1]
+
+    start_full_seq = 'AATGTACTTCGTTCAGTTACG' + 'GCTTGGGTGTTTAACC' + start_barcode_seq + \
+                     'GTTTTCGCATTTATCGTGAAACGCTTTCGCGTTTTTCGTGCGCCGCTTCA'
+
+    return Adapter('Rapid barcoding ' + str(barcode_num) + ' (full sequence, new)',
+                   start_sequence=('RB' + '%02d' % barcode_num + '_full', start_full_seq))
